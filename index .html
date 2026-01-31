@@ -1,12 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<script src="https://pl28609986.effectivegatecpm.com/94/3e/92/943e92d5a5f477a01d543558ed547c70.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Taka Income BD</title>
     
-<script src='//libtl.com/sdk.js' data-zone='10543168' data-sdk='show_10543168'></script>
+    <!-- নতুন effectivegatecpm.com script -->
+    <script src="https://pl28609986.effectivegatecpm.com/94/3e/92/943e92d5a5f477a01d543558ed547c70.js"></script>
+    
+    <!-- নতুন zone ID সহ libtl.com SDK -->
+    <script src='//libtl.com/sdk.js' data-zone='10543168' data-sdk='show_10543168'></script>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -140,13 +143,17 @@
                         </div>
 
                         <h3 class="text-xs font-bold text-gray-500 uppercase mt-4">Ad Rewards</h3>
+                        
+                        <!-- Watch Short Ad Button with libtl.com -->
                         <div class="bg-orange-500 p-3 rounded-lg flex items-center justify-between text-black">
                             <div class="flex items-center space-x-3"><span class="text-3xl">🤩</span><div><h3 class="font-bold">Watch Short Ad</h3></div></div>
-                            <button class="bg-white text-orange-500 font-bold px-6 py-2 rounded-lg text-sm btn" onclick="claimReward('interstitial')">Claim</button>
+                            <button class="bg-white text-orange-500 font-bold px-6 py-2 rounded-lg text-sm btn" onclick="showLibtlAd('interstitial')">Claim</button>
                         </div>
+                        
+                        <!-- Click for Reward Button with libtl.com -->
                         <div class="card-bg p-3 rounded-lg flex items-center justify-between">
                             <div class="flex items-center space-x-3"><span class="text-3xl">😎</span><div><h3 class="font-semibold">Click for Reward</h3></div></div>
-                            <button class="bg-white text-black font-bold px-6 py-2 rounded-lg text-sm btn" onclick="claimReward('popup')">Claim</button>
+                            <button class="bg-white text-black font-bold px-6 py-2 rounded-lg text-sm btn" onclick="showLibtlAd('popup')">Claim</button>
                         </div>
                     </div>
                 </section>
@@ -632,6 +639,81 @@
             }
         }
 
+        // ========== LIBTL.COM ADS FUNCTIONALITY ==========
+        
+        window.showLibtlAd = async function(adType) {
+            const today = new Date().toISOString().split('T')[0];
+            const userRef = doc(db, "users", currentUser.uid);
+
+            if (userData.lastAdWatchDate !== today) {
+                await updateDoc(userRef, { dailyAdCount: 0, lastAdWatchDate: today });
+                userData.dailyAdCount = 0;
+                userData.lastAdWatchDate = today;
+            }
+
+            if (userData.dailyAdCount >= (appConfig.dailyAdLimit || 15)) {
+                return showAlert("আজকের কাজ শেষ! আগামীকাল আবার চেষ্টা করুন।");
+            }
+            
+            // Check if libtl.com script is loaded
+            if (typeof window.show_10543168 !== 'function') {
+                return showAlert("Ad service currently unavailable. Please check your internet connection.");
+            }
+
+            const eventBtn = window.event ? (window.event.target.closest('button') || window.event.target) : null;
+            const originalBtnText = eventBtn ? eventBtn.innerText : "Claim";
+            
+            loader.style.display = 'flex';
+            try {
+                let adPromise;
+                // Call libtl.com ad function
+                if (adType === 'interstitial') {
+                    adPromise = window.show_10543168(); // interstitial ad
+                } else if (adType === 'popup') {
+                    adPromise = window.show_10543168('pop'); // popup ad
+                } else {
+                    return showAlert("Invalid ad type.");
+                }
+                
+                await adPromise;
+                loader.style.display = 'none';
+
+                if(eventBtn) {
+                    eventBtn.disabled = true;
+                    let waitTime = 30;
+                    const adTimer = setInterval(async () => {
+                        eventBtn.innerText = `Wait ${waitTime}s`;
+                        waitTime--;
+                        if (waitTime < 0) {
+                            clearInterval(adTimer);
+                            eventBtn.innerText = originalBtnText;
+                            eventBtn.disabled = false;
+                            await processAdReward();
+                        }
+                    }, 1000);
+                } else {
+                    setTimeout(async () => { 
+                        await processAdReward(); 
+                    }, 30000);
+                }
+
+                async function processAdReward() {
+                    const newCount = (userData.dailyAdCount || 0) + 1;
+                    await updateDoc(userRef, { dailyAdCount: newCount });
+                    userData.dailyAdCount = newCount;
+                    let rewardAmount = 50; 
+                    await updateBalance(rewardAmount);
+                    showAlert(`Congratulations! You have won ${rewardAmount} coins.`);
+                    updateAdsLeftCount();
+                }
+
+            } catch(e) {
+                console.error("Ad error:", e);
+                loader.style.display = 'none';
+                showAlert('Could not show ad. Please try again later.');
+            }
+        }
+
         // --- UPDATED WEBSITE VISIT LOGIC (Reads URL from appConfig) ---
         window.startWebTask = async function(taskId) {
             const today = new Date().toISOString().split('T')[0];
@@ -686,73 +768,6 @@
             }, 1000);
         };
 
-        // --- AD LOGIC (Same as before) ---
-        window.claimReward = async function(taskType) {
-            const today = new Date().toISOString().split('T')[0];
-            const userRef = doc(db, "users", currentUser.uid);
-
-            if (userData.lastAdWatchDate !== today) {
-                await updateDoc(userRef, { dailyAdCount: 0, lastAdWatchDate: today });
-                userData.dailyAdCount = 0;
-                userData.lastAdWatchDate = today;
-            }
-
-            if (userData.dailyAdCount >= (appConfig.dailyAdLimit || 15)) {
-                return showAlert("আজকের কাজ শেষ! আগামীকাল আবার চেষ্টা করুন।");
-            }
-            
-            if (typeof window.show_8690632 !== 'function') {
-                return showAlert("Ad service currently unavailable. Check internet.");
-            }
-
-            const eventBtn = window.event ? (window.event.target.closest('button') || window.event.target) : null;
-            const originalBtnText = eventBtn ? eventBtn.innerText : "Claim";
-            
-            let adPromise;
-            loader.style.display = 'flex';
-            try {
-                 switch(taskType) {
-                    case 'interstitial': adPromise = window.show_10543168(); break;
-                    case 'popup': adPromise = window.show_10543168('pop'); break;
-                    default: return;
-                }
-                await adPromise;
-                loader.style.display = 'none';
-
-                if(eventBtn) {
-                    eventBtn.disabled = true;
-                    let waitTime = 30;
-                    const adTimer = setInterval(async () => {
-                        eventBtn.innerText = `Wait ${waitTime}s`;
-                        waitTime--;
-                        if (waitTime < 0) {
-                            clearInterval(adTimer);
-                            eventBtn.innerText = originalBtnText;
-                            eventBtn.disabled = false;
-                            await processReward();
-                        }
-                    }, 1000);
-                } else {
-                     setTimeout(async () => { await processReward(); }, 30000);
-                }
-
-                async function processReward() {
-                    const newCount = (userData.dailyAdCount || 0) + 1;
-                    await updateDoc(userRef, { dailyAdCount: newCount });
-                    userData.dailyAdCount = newCount;
-                    let rewardAmount = 50; 
-                    await updateBalance(rewardAmount);
-                    showAlert(`Congratulations! You have won ${rewardAmount} coins.`);
-                    updateAdsLeftCount();
-                }
-
-            } catch(e) {
-                console.error("Ad error:", e);
-                loader.style.display = 'none';
-                showAlert('Could not show ad. Please try again later.');
-            }
-        }
-
         function showAlert(message) {
             document.getElementById('alert-message').textContent = message;
             document.getElementById('custom-alert').classList.remove('hidden');
@@ -762,7 +777,8 @@
         }
         window.showAlert = showAlert;
     </script>
-<script src="https://pl28609996.effectivegatecpm.com/d3/e2/f6/d3e2f6a176b185c1a258fb51e38c45f5.js"></script>
 
+    <!-- দ্বিতীয় effectivegatecpm.com script -->
+    <script src="https://pl28609996.effectivegatecpm.com/d3/e2/f6/d3e2f6a176b185c1a258fb51e38c45f5.js"></script>
 </body>
 </html>
